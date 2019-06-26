@@ -1,112 +1,83 @@
-#include <stdio.h>
 #include "DLinkedList.h"
 
 /*
  * return dl's first Node
  */
-LinkedList* linkedList_init()
+DLinkedList* linkedList_init()
 {
-    LinkedList* new_likedlist_ptr = (LinkedList*) malloc(sizeof(LinkedList));
-    new_likedlist_ptr->remainder_size = MAX_CACHE_SIZE;
-    new_likedlist_ptr->header = NULL;
+    DLinkedList* dlinkedlist_ptr = (DLinkedList*) malloc(sizeof(DLinkedList));
+    dlinkedlist_ptr->remainder_size = MAX_CACHE_SIZE;
+    dlinkedlist_ptr->header = NULL;
+    dlinkedlist_ptr->tail = NULL;
 
-    return new_likedlist_ptr;
+    return dlinkedlist_ptr;
 }
 
 /**
  * params
- * url : 
- * object :
- * size :
- * return node pointer
+ * dlinkedlist_ptr : linked list pointer
+ * return deleted node pointer (header node)
  */
-Node* node_init(char* url, char* object, int size)
-{
-    if (size > MAX_OBJECT_SIZE) return NULL;
-
-    Node* new_node_ptr = (Node*) malloc(sizeof(Node));
-    bzero(new_node_ptr->url, MAX_BUF_SIZE);
-    strcpy(new_node_ptr->url, url);
-    bzero(new_node_ptr->object, MAX_OBJECT_SIZE);
-    memcpy(new_node_ptr->object, object, size);
-    new_node_ptr->object_size= size;
-    time_t current_time;
-    time(&current_time);
-    new_node_ptr->timestemp=current_time;
-    new_node_ptr->next = NULL;
-
-    return new_node_ptr;
-}
-
-/**
- * params
- * single_linkedlist : linked list pointer
- * return deleted node pointer
- */
-Node* delete(LinkedList *single_linkedlist)
+Node* delete(DLinkedList *dlinkedlist_ptr)
 {
     // write your code..
-    if (single_linkedlist->header != NULL)
+    Node *ret_ptr = dlinkedlist_ptr->header;
+    if (ret_ptr == NULL) return NULL;
+    else if (ret_ptr == dlinkedlist_ptr->tail)
     {
-        Node* tmp = single_linkedlist->header;
-        single_linkedlist->remainder_size += tmp->object_size;
-        single_linkedlist->header = tmp->next;
-
-        return tmp;
+        dlinkedlist_ptr->header = NULL;
+        dlinkedlist_ptr->tail = NULL;
     }
-    else return NULL; 
+    else
+    {
+        ret_ptr->next->prev = NULL;
+        dlinkedlist_ptr->header = ret_ptr->next;
+    }
+    dlinkedlist_ptr->remainder_size += ret_ptr->object_size;
+
+    return ret_ptr;
 }
 
 /**
  * params
- * single_linkedlist : linked list pointer
- * node : a node pointer to add in single_linkedlist
+ * dlinkedlist_ptr : linked list pointer
+ * node : a node pointer to add in dlinkedlist_ptr, size of node < MAX_OBJECT_SIZE
  */
-void add(LinkedList *single_linkedlist, Node *node)
+void add(DLinkedList *dlinkedlist_ptr, Node *node)
 {
     if (node == NULL) return;
 
-    while (single_linkedlist->remainder_size < node->object_size) delete(single_linkedlist);
+    while (dlinkedlist_ptr->remainder_size < node->object_size) delete(dlinkedlist_ptr);
 
-    if (single_linkedlist->header!=NULL)
+    if (dlinkedlist_ptr->tail == NULL) dlinkedlist_ptr->header = node;
+    else
     {
-        Node* tmp = single_linkedlist->header;
-        while((tmp->next)!=NULL) tmp = tmp->next;
-        tmp->next = node;
-        single_linkedlist->remainder_size -= node->object_size;
+        node->prev = dlinkedlist_ptr->tail;
+        dlinkedlist_ptr->tail->next = node;
     }
-    else single_linkedlist->header = node;
+    dlinkedlist_ptr->tail = node;
+    dlinkedlist_ptr->remainder_size -= node->object_size;
 }
 
 /**
  * params
- * single_linkedlist : linked list pointer
+ * dlinkedlist_ptr : linked list pointer
  * url : 
  */
-Node* search(LinkedList *single_linkedlist, char* url)
+Node* search(DLinkedList *dlinkedlist_ptr, char* url)
 {
-    Node* cur_node = single_linkedlist->header, *prev_node;
+    Node* cur_node = dlinkedlist_ptr->header;
+    while (strcmp(cur_node->url, url) != 0 && cur_node != NULL) cur_node = cur_node->next;
 
     if (cur_node == NULL) return NULL;
-    while (strcmp(cur_node->url, url) != 0 && cur_node != NULL)
+    else if (strcmp(cur_node->url, url) == 0)
     {
-        prev_node = cur_node;
-        cur_node = cur_node->next;
+        cur_node->prev->next = cur_node->next;
+        cur_node->next->prev - cur_node->prev;
+        dlinkedlist_ptr->tail->next = cur_node;
+        cur_node->prev = dlinkedlist_ptr->tail;
+        dlinkedlist_ptr->tail = cur_node;
+        cur_node->next = NULL;
     }
-
-    if (strcmp(cur_node->url, url) == 0) return cur_node;
-    Node* tmp = single_linkedlist->header->next;
-    if (tmp == NULL) return NULL;
-    while(strcmp(tmp->url, url)!=0)
-    {
-        cur_node = cur_node->next;
-        tmp = tmp->next;
-        if (tmp == NULL) return NULL;
-    }
-    cur_node->next = tmp->next;
-    tmp->next = NULL;
-    single_linkedlist->remainder_size += tmp->object_size;
-    add(single_linkedlist, tmp);
-
-    return tmp;
+    return cur_node;
 }

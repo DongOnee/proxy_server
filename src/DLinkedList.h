@@ -1,24 +1,20 @@
-#include <time.h>
+#if !defined(DLINKEDLIST_H)
+#define DLINKEDLIST_H
 
-#define MAX_BUF_SIZE 1024 // 1kb
-#define MAX_OBJECT_SIZE 524288 //512kb
+#include <stdio.h>
+#include "Node.h"
+
 #define MAX_CACHE_SIZE 5242880 //5mb
 
-typedef struct Node {
-    time_t timestemp;
-    char url[MAX_BUF_SIZE]; // identifier
-    char object[MAX_OBJECT_SIZE]; // data
-    int object_size;
-    struct Node *next;
-} Node;
-
-typedef struct LinkedList {
+typedef struct DLinkedList {
     int remainder_size;
     struct Node *header;
-} LinkedList;
+    struct Node *tail;
+} DLinkedList;
 
-LinkedList* linkedList_init();
-Node* node_init(char* , char* , int);
-Node* delete(LinkedList*);
-void add(LinkedList*, Node*);
-Node* search(LinkedList*, char*);
+DLinkedList* linkedList_init();
+Node* delete(DLinkedList*);
+void add(DLinkedList*, Node*);
+Node* search(DLinkedList*, char*);
+
+#endif // DLINKEDLIST_H
