@@ -20,6 +20,7 @@ Node* node_init(char* url, char* object, int size)
     time_t current_time;
     time(&current_time);
     new_node_ptr->timestemp=current_time;
+    new_node_ptr->prev = NULL;
     new_node_ptr->next = NULL;
 
     return new_node_ptr;

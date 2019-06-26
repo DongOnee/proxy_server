@@ -11,6 +11,7 @@ typedef struct Node {
     char url[MAX_BUF_SIZE]; // identifier
     char object[MAX_OBJECT_SIZE]; // data
     int object_size;
+    struct Node *prev;
     struct Node *next;
 } Node;
 
