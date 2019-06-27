@@ -13,15 +13,16 @@ void error(char *msg)
 
 void sigint_handler(int signo)
 {
+    printf("SEGSEGV\n");
+    close(proxy_socket_fd);
     bzero((char *) &proxy_addr, sizeof(struct sockaddr_in));
-    close(sockfd);
     exit(1);
 }
 
 void closeall()
 {
     printf("\nbye~\n");
-    close(sockfd);
+    close(proxy_socket_fd);
 }
 
 int main(int argc, char *argv[]) 
@@ -32,7 +33,7 @@ int main(int argc, char *argv[])
     // SIGINT 를 이용해서 종료하였을때 socket 을 닫아주기 위해
     act_new.sa_handler = sigint_handler;
     sigemptyset(&act_new.sa_mask);
-    sigaction(SIGINT, &act_new, &act_old);
+    sigaction(SIGSEGV, &act_new, &act_old);
 
     // cacheing memory init
     g_heap = linkedList_init();
@@ -42,21 +43,30 @@ int main(int argc, char *argv[])
      * AF_INET: Address Domain is Internet 
      * SOCK_STREAM: Socket Type is STREAM Socket
      */
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd < 0) error("ERROR opening socket");
+    proxy_socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (proxy_socket_fd < 0) error("ERROR opening socket");
+    // For avoid binding error : Address already in use.
+    int val = 1;
+    if (setsockopt(proxy_socket_fd, SOL_SOCKET, SO_REUSEADDR, (char *) &val, sizeof(val)) < 0)
+    {
+        perror("setsockopt");
+        close(proxy_socket_fd);
+        return -1;
+    }
 
     /* SET PROXY ADDRESS */
     bzero((char *) &proxy_addr, sizeof(struct sockaddr_in));
-    portno = atoi(argv[1]); //atoi converts from String to Integer
+    proxy_port = atoi(argv[1]); //atoi converts from String to Integer
+
     proxy_addr.sin_family = AF_INET;
     proxy_addr.sin_addr.s_addr = htonl(INADDR_ANY); //for the server the IP address is always the address that the server is running on
-    proxy_addr.sin_port = htons(portno); //convert from host to network byte order
+    proxy_addr.sin_port = htons(proxy_port); //convert from host to network byte order
  
     //Bind the socket to the server address
-    if (bind(sockfd, (struct sockaddr *) &proxy_addr, sizeof(proxy_addr)) < 0)  error("ERROR on binding");
+    if (bind(proxy_socket_fd, (struct sockaddr *) &proxy_addr, sizeof(proxy_addr)) < 0)  error("ERROR on binding");
  
     // Listen for socket connections. Backlog queue (connections to wait) is 5
-    if (listen(sockfd, 10) == -1) error("ERROR on listen");
+    if (listen(proxy_socket_fd, 5) == -1) error("ERROR on listen");
 
     // for multi-thread
     pthread_t p_thread[100];
@@ -70,14 +80,14 @@ int main(int argc, char *argv[])
          * 1) Block until a new connection is established
          * 2) the new socket descriptor will be used for subsequent communication with the newly connected client.
         */
-        int newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
-        if (newsockfd < 0) error("ERROR on accept");
-        if(pthread_create(&p_thread[i], NULL, (void*) t_function, (void*)&newsockfd) <0 ) perror("thread create error");
-        pthread_join(p_thread[i], NULL);
+        int newsockfd = accept(proxy_socket_fd, (struct sockaddr *) &cli_addr, &clilen);
+        if ( newsockfd < 0 ) error("ERROR on accept");
+        if ( pthread_create(&p_thread[i], NULL, t_function, &newsockfd) <0 ) perror("thread create error");
+        pthread_join( p_thread[i], NULL );
         i = (i+1) % 100;
     }
 
-    close(sockfd);
+    close(proxy_socket_fd);
     return 0; 
 }
 
@@ -155,22 +165,8 @@ void free_request_msg(struct request_msg* saved)
 }
 
 
-void t_function(void* newsockfd)
+void* t_function(void* newsockfd)
 {
-    /*
-    char* requestname = (char*) malloc(sizeof(char)*MAX_BUF_SIZE);
-    char* mathod = (char*) malloc(sizeof(char)*MAX_BUF_SIZE);
-    char* URL = (char*) malloc(sizeof(char)*MAX_BUF_SIZE);
-    char* vhttp = (char*) malloc(sizeof(char)*MAX_BUF_SIZE);
-    char* host = (char*) malloc(sizeof(char)*MAX_BUF_SIZE);
-    char* port = (char*) malloc(sizeof(char)*MAX_BUF_SIZE);
-    bzero((char*)requestname, MAX_BUF_SIZE);
-    bzero((char*)mathod, MAX_BUF_SIZE);
-    bzero((char*)URL, MAX_BUF_SIZE);
-    bzero((char*)vhttp, MAX_BUF_SIZE);
-    bzero((char*)host, MAX_BUF_SIZE);
-    bzero((char*)port, MAX_BUF_SIZE);
- */
     struct request_msg saved;
     assign_request_msg(&saved);
     
@@ -185,13 +181,13 @@ void t_function(void* newsockfd)
     printf("server got connection from client : %s\n", inet_ntoa(cli_addr.sin_addr));
 
     // read section~~~~ we can see http reqeust message using buffer.
-    reqlen = read(*(int*)newsockfd, req_message, MAX_BUF_SIZE); //Read is a block function. It will read at most 1024 bytes
+    reqlen = read(*(int*) newsockfd, req_message, MAX_BUF_SIZE); //Read is a block function. It will read at most 1024 bytes
     if (reqlen < 0) error("ERROR reading from socket"); // error
     else if (reqlen==0) // 가끔 버퍼에 아무것도 채워지지 않는 경우가 발생한다. 이 문제가 발생하여도 서버가 다운되지 않도록 조치 하였다.
     {
         printf("error~~\nreqlen=0\nrestart!!\n\n\n");
-        close(*(int*)newsockfd);
-        return;
+        close(*(int*) newsockfd);
+        return NULL;
     }
     printf("====================1st request message====================\n%s\n====================================end====================\n\n", req_message);
 
@@ -200,8 +196,8 @@ void t_function(void* newsockfd)
     if (strcmp(saved._method, "GET") != 0)
     { 
         printf("NO GET...\n");
-        close(*(int*)newsockfd);
-        return;
+        close(*(int*) newsockfd);
+        return NULL;
     }
 
     //hit or miss
