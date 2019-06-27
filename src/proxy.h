@@ -22,8 +22,8 @@
 struct sigaction act_new;
 struct sigaction act_old;
 
-int sockfd; // descriptors rturn from socket and accept system calls
-int portno; // port number
+int proxy_socket_fd; // descriptors rturn from socket and accept system calls
+int proxy_port; // port number
 struct sockaddr_in proxy_addr, cli_addr, end_addr;
 
 struct request_msg
@@ -37,9 +37,11 @@ struct request_msg
 };
 
 void parse_reqm(char*, struct request_msg*);
-void t_function(void*);
+void* t_function(void*);
 void assign_request_msg(struct request_msg*);
 void free_request_msg(struct request_msg*);
+
+void closeall();
 
 DLinkedList* g_heap;
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
