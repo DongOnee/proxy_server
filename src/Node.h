@@ -2,6 +2,8 @@
 #define NODE_H
 
 #include <time.h>
+#include <stdlib.h>
+#include <string.h>
 
 #define MAX_BUF_SIZE 1024 // 1kb
 #define MAX_OBJECT_SIZE 524288 //512kb
