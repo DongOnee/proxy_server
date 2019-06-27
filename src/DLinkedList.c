@@ -67,7 +67,8 @@ void add(DLinkedList *dlinkedlist_ptr, Node *node)
 Node* search(DLinkedList *dlinkedlist_ptr, char* url)
 {
     Node* cur_node = dlinkedlist_ptr->header;
-    while (strcmp(cur_node->url, url) != 0 && cur_node != NULL) cur_node = cur_node->next;
+    if (cur_node == NULL);
+    else while (strcmp(cur_node->url, url) != 0 && cur_node != NULL) cur_node = cur_node->next;
 
     if (cur_node == NULL) return NULL;
     else if (strcmp(cur_node->url, url) == 0)
