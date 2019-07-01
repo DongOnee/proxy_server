@@ -24,7 +24,7 @@ struct sigaction act_old;
 
 int proxy_socket_fd; // descriptors rturn from socket and accept system calls
 int proxy_port; // port number
-struct sockaddr_in proxy_addr, cli_addr, end_addr;
+struct sockaddr_in proxy_addr;
 
 struct request_msg
 {
@@ -37,14 +37,19 @@ struct request_msg
 };
 
 void parse_reqm(char*, struct request_msg*);
-void* t_function(void*);
+void* accept_operation(void*);
 void assign_request_msg(struct request_msg*);
 void free_request_msg(struct request_msg*);
 
 void closeall();
 
-DLinkedList* g_heap;
+DLinkedList* data_cache;
+pthread_cond_t cond_t = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t mutex_t = PTHREAD_MUTEX_INITIALIZER;
+
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t lmutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t rmutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t kmutex = PTHREAD_MUTEX_INITIALIZER;
 
 #endif // PROXY_H

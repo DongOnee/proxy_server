@@ -5,18 +5,17 @@
 
 #include "proxy.h"
 
+#define DEBUG_FLAG 0
+
 void error(char *msg)
 {
     perror(msg);
     exit(1);
 }
 
-void sigint_handler(int signo)
+void debug(char *msg, ...)
 {
-    printf("SEGSEGV\n");
-    close(proxy_socket_fd);
-    bzero((char *) &proxy_addr, sizeof(struct sockaddr_in));
-    exit(1);
+    if (DEBUG_FLAG) printf(msg);
 }
 
 void closeall()
@@ -30,21 +29,17 @@ int main(int argc, char *argv[])
     // error detect
     if (argc < 2) error("ERROR, no port provided\n");
 
-    // SIGINT 를 이용해서 종료하였을때 socket 을 닫아주기 위해
-    act_new.sa_handler = sigint_handler;
-    sigemptyset(&act_new.sa_mask);
-    sigaction(SIGSEGV, &act_new, &act_old);
-
     // cacheing memory init
-    g_heap = linkedList_init();
+    data_cache = linkedList_init();
 
     /**
      * Create a new socket
      * AF_INET: Address Domain is Internet 
      * SOCK_STREAM: Socket Type is STREAM Socket
      */
-    proxy_socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+    proxy_socket_fd = socket(PF_INET, SOCK_STREAM, 0);
     if (proxy_socket_fd < 0) error("ERROR opening socket");
+
     // For avoid binding error : Address already in use.
     int val = 1;
     if (setsockopt(proxy_socket_fd, SOL_SOCKET, SO_REUSEADDR, (char *) &val, sizeof(val)) < 0)
@@ -55,7 +50,7 @@ int main(int argc, char *argv[])
     }
 
     /* SET PROXY ADDRESS */
-    bzero((char *) &proxy_addr, sizeof(struct sockaddr_in));
+    bzero(&proxy_addr, sizeof(struct sockaddr_in));
     proxy_port = atoi(argv[1]); //atoi converts from String to Integer
 
     proxy_addr.sin_family = AF_INET;
@@ -66,13 +61,16 @@ int main(int argc, char *argv[])
     if (bind(proxy_socket_fd, (struct sockaddr *) &proxy_addr, sizeof(proxy_addr)) < 0)  error("ERROR on binding");
  
     // Listen for socket connections. Backlog queue (connections to wait) is 5
-    if (listen(proxy_socket_fd, 5) == -1) error("ERROR on listen");
+    if (listen(proxy_socket_fd, 10) == -1) error("ERROR on listen");
 
     // for multi-thread
-    pthread_t p_thread[100];
-
+    pthread_t p_thread[15];
+    int accept_fd[15];
+    int thid[15];
     int i =0;
-    socklen_t clilen = sizeof(cli_addr);
+    struct sockaddr_in client_addr;
+    socklen_t clilen = sizeof(client_addr);
+    
     while (1)
     {
         /**
@@ -80,15 +78,27 @@ int main(int argc, char *argv[])
          * 1) Block until a new connection is established
          * 2) the new socket descriptor will be used for subsequent communication with the newly connected client.
         */
-        int newsockfd = accept(proxy_socket_fd, (struct sockaddr *) &cli_addr, &clilen);
-        if ( newsockfd < 0 ) error("ERROR on accept");
-        if ( pthread_create(&p_thread[i], NULL, t_function, &newsockfd) <0 ) perror("thread create error");
-        pthread_join( p_thread[i], NULL );
-        i = (i+1) % 100;
+        accept_fd[i] = accept(proxy_socket_fd, (struct sockaddr *) &client_addr, &clilen);
+        if ( accept_fd[i] < 0 ) error("ERROR on accept");
+
+        // check sever connection
+        printf("server got connection from client : %s\nusing socket file descriptor : %d\n", inet_ntoa(client_addr.sin_addr), accept_fd[i]);
+        pthread_mutex_lock(&mutex_t);
+        thid[i] = pthread_create(p_thread+i, NULL, accept_operation, (void*) &accept_fd[i]);
+        pthread_cond_wait(&cond_t, &mutex_t);
+        pthread_mutex_unlock(&mutex_t);
+        
+        if ( thid[i] < 0 ) perror("thread create error");
+        else 
+        {
+            pthread_detach(p_thread[i]);
+            i = (i+1) % 15;
+        }
+        // pthread_join( p_thread[i], NULL );
     }
 
     close(proxy_socket_fd);
-    return 0; 
+    return 0;
 }
 
 
@@ -137,7 +147,7 @@ void parse_reqm(char *message, struct request_msg *saved)
 }
 
 
-void assign_request_msg(struct request_msg* saved)
+void assign_request_msg(struct request_msg *saved)
 {
     saved->_method = (char*) malloc(sizeof(char)*MAX_BUF_SIZE);
     saved->_url = (char*) malloc(sizeof(char)*MAX_BUF_SIZE);
@@ -146,12 +156,12 @@ void assign_request_msg(struct request_msg* saved)
     saved->_vhttp = (char*) malloc(sizeof(char)*MAX_BUF_SIZE);
     saved->_host = (char*) malloc(sizeof(char)*MAX_BUF_SIZE);
 
-    bzero((char*)saved->_method, MAX_BUF_SIZE);
-    bzero((char*)saved->_url, MAX_BUF_SIZE);
-    bzero((char*)saved->_url_object, MAX_BUF_SIZE);
-    bzero((char*)saved->_port, MAX_BUF_SIZE);
-    bzero((char*)saved->_vhttp, MAX_BUF_SIZE);
-    bzero((char*)saved->_host, MAX_BUF_SIZE);
+    bzero(saved->_method, MAX_BUF_SIZE);
+    bzero(saved->_url, MAX_BUF_SIZE);
+    bzero(saved->_url_object, MAX_BUF_SIZE);
+    bzero(saved->_port, MAX_BUF_SIZE);
+    bzero(saved->_vhttp, MAX_BUF_SIZE);
+    bzero(saved->_host, MAX_BUF_SIZE);
 }
 
 void free_request_msg(struct request_msg* saved)
@@ -165,38 +175,41 @@ void free_request_msg(struct request_msg* saved)
 }
 
 
-void* t_function(void* newsockfd)
+void *accept_operation(void *_socket_fd)
 {
+    pthread_mutex_lock(&mutex_t);
+
+    int socket_fd = *(int*)_socket_fd;
     struct request_msg saved;
     assign_request_msg(&saved);
-    
-    char *req_message = (char*) malloc(sizeof(char)*MAX_BUF_SIZE);
-    char *respon_message = (char*) malloc(sizeof(char)*MAX_OBJECT_SIZE);
-    bzero((char*)req_message, MAX_BUF_SIZE);
-    bzero((char*)respon_message, MAX_OBJECT_SIZE);
+    struct sockaddr_in end_addr;
+
+    char req_message[MAX_BUF_SIZE+1];
+    char respon_message[MAX_OBJECT_SIZE+1];
     int reqlen=0;
     int reslen=0;
 
-    // check sever connection
-    printf("server got connection from client : %s\n", inet_ntoa(cli_addr.sin_addr));
+    pthread_cond_signal(&cond_t);
+    printf("accept_operation start socket_fd:%d\n", socket_fd);
+    pthread_mutex_unlock(&mutex_t);
 
     // read section~~~~ we can see http reqeust message using buffer.
-    reqlen = read(*(int*) newsockfd, req_message, MAX_BUF_SIZE); //Read is a block function. It will read at most 1024 bytes
+    reqlen = recv(socket_fd, (void*) req_message, MAX_BUF_SIZE, 0); //Read is a block function. It will read at most 1024 bytes
     if (reqlen < 0) error("ERROR reading from socket"); // error
-    else if (reqlen==0) // 가끔 버퍼에 아무것도 채워지지 않는 경우가 발생한다. 이 문제가 발생하여도 서버가 다운되지 않도록 조치 하였다.
+    else if (reqlen == 0) // 가끔 버퍼에 아무것도 채워지지 않는 경우가 발생한다. 이 문제가 발생하여도 서버가 다운되지 않도록 조치 하였다.
     {
-        printf("error~~\nreqlen=0\nrestart!!\n\n\n");
-        close(*(int*) newsockfd);
+        printf("received message's length is zero\n");
+        close(socket_fd);
         return NULL;
     }
-    printf("====================1st request message====================\n%s\n====================================end====================\n\n", req_message);
+    debug("====================1st request message====================\n%s\n====================================end====================\n\n", req_message);
 
     /***********PARSING DATA***********/
     parse_reqm(req_message, &saved);
     if (strcmp(saved._method, "GET") != 0)
     { 
-        printf("NO GET...\n");
-        close(*(int*) newsockfd);
+        printf("NO GET METHOD\n");
+        close(socket_fd);
         return NULL;
     }
 
@@ -204,14 +217,14 @@ void* t_function(void* newsockfd)
     Node *searched;
     // mutex lock.............
     pthread_mutex_lock(&mutex);
-    searched = search(g_heap, saved._url);
+    searched = search(data_cache, saved._url);
     pthread_mutex_unlock(&mutex);
+
     if (searched != NULL)
     {
-        printf("================\n");
-        printf("==HITTTTTTTT!!==\n");
-        printf("================\n\n");
-        printf("====================searched->object====================\n%s\n====================================end====================\n\n", searched->object);
+        printf("================\n==HITTTTTTTT!!==\n================\n\n");
+
+        debug("====================searched->object====================\n%s\n====================================end====================\n\n", searched->object);
 
         reslen = searched->object_size;
         char* temp_m = searched->object;
@@ -221,7 +234,7 @@ void* t_function(void* newsockfd)
         char* ptr_send = searched->object;
         while (0 < remain_send)
         {
-            int size_send = send(*(int*) newsockfd, ptr_send, remain_send, 0);
+            int size_send = send(socket_fd, ptr_send, remain_send, 0);
             if (size_send == -1) break;
 
             remain_send -= size_send;
@@ -230,9 +243,7 @@ void* t_function(void* newsockfd)
     } 
     else
     {
-        printf("================\n");
-        printf("==MISSSSSSSS!!==\n");
-        printf("================\n\n");
+        printf("================\n==MISSSSSSSS!!==\n================\n\n");
 
         char cp_request_message[reqlen+1];
         bzero((char*)cp_request_message, reqlen+1);
@@ -251,43 +262,50 @@ void* t_function(void* newsockfd)
             else strcat(req_message, line_parse);
             strcat(req_message, "\n");
         }
-        printf("====================2st request message====================\n%s\n====================================end====================\n\n", req_message);
+        debug("====================2st request message====================\n%s\n====================================end====================\n\n", req_message);
 
         // re-setting socket option
         int end_server_portno = atoi(saved._port);
-        struct hostent *server; //conaatains tons of information, including the server's IP address
-        server = gethostbyname(saved._host); //takes a string like "www.yahoo.com", and returns a struct hostent which contains information, as IP address, address type, the length of the addresses...
+        struct hostent *server = gethostbyname(saved._host); //takes a string like "www.yahoo.com", and returns a struct hostent which contains information, as IP address, address type, the length of the addresses...
         if (server == NULL)
         {
             fprintf(stderr, "ERROR, no such host\n");
             exit(0);
         }
 
-        int ens_server_socket = socket(AF_INET, SOCK_STREAM, 0); //create a new socket
-        bzero((char*) &end_addr, sizeof(struct sockaddr_in));
+        // end-server ip print
+        // for ( int ndx = 0; NULL != server->h_addr_list[ndx]; ndx++)
+        //     printf( "%s\n", inet_ntoa( *(struct in_addr*) server->h_addr_list[ndx]));
+
+        int end_server_socket = socket(PF_INET, SOCK_STREAM, 0); //create a new socket
+        bzero(&end_addr, sizeof(struct sockaddr_in));
         end_addr.sin_family = AF_INET; //initialize server's address
-        bcopy((char*)server->h_addr_list, (char*)&end_addr.sin_addr.s_addr, server->h_length);
         end_addr.sin_port = htons(end_server_portno);
 
+        
+        // end_addr.sin_addr.s_addr = inet_addr( *(struct in_addr*)server->h_addr_list);
+        bcopy((char*) server->h_addr_list[0], (char*) &end_addr.sin_addr.s_addr, server->h_length);
+
         // connect
-        if (connect(ens_server_socket,(struct sockaddr *)&end_addr,sizeof(end_addr)) < 0) //establish a connection to the server
+        if (connect(end_server_socket, (struct sockaddr *) &end_addr, sizeof(end_addr)) < 0) //establish a connection to the server
             error("ERROR connecting");
         printf("server got connection from end server : %s\n", inet_ntoa(end_addr.sin_addr));
 
         // write req_message to server
-        int size_send = send(ens_server_socket, req_message, strlen(req_message)+1, 0);
+        int size_send = send(end_server_socket, req_message, strlen(req_message)+1, 0);
         if (size_send < 0) error("ERROR writing to socket");
 
         // read respons message
         char receive_buffer[MAX_BUF_SIZE];
         char *response_message_ptr = respon_message;
         int over_object_size_flag = 1;
+
         while(1)
         {
-            int receive_size = recv(ens_server_socket, receive_buffer, MAX_BUF_SIZE, 0);
-            if (receive_size == -1) break;
+            int receive_size = recv(end_server_socket, receive_buffer, MAX_BUF_SIZE, 0);
+            if (receive_size <= 0) break;
             reslen += receive_size;
-            send(*(int*) newsockfd, receive_buffer, receive_size, 0);
+            send(socket_fd, receive_buffer, receive_size, 0);
             if (reslen > MAX_OBJECT_SIZE && over_object_size_flag)
             {
                 bzero((char*) respon_message, MAX_OBJECT_SIZE);
@@ -300,13 +318,13 @@ void* t_function(void* newsockfd)
             }
         }
 
-        /**********read respon_message**********/
-        printf("==================== respon_message ====================\n%s\n====================================end====================\n\n", respon_message);
+        close(end_server_socket);
+        debug("==================== respon_message ====================\n%s\n====================================end====================\n\n", respon_message);
         if ((strncmp(respon_message, "HTTP/1.1 200 OK", 13)==0) && reslen < MAX_OBJECT_SIZE)
         {
-            pthread_mutex_lock(&mutex);
-            add(g_heap, node_init(saved._url, respon_message, reslen+1));
-            pthread_mutex_unlock(&mutex);
+            pthread_mutex_lock(&lmutex);
+            add(data_cache, node_init(saved._url, respon_message, reslen+1));
+            pthread_mutex_unlock(&lmutex);
         }
     }
 
@@ -327,18 +345,17 @@ void* t_function(void* newsockfd)
     strcat(logs, mlen);
     strcat(logs, "\n");
 
-    pthread_mutex_lock(&lmutex);
+    pthread_mutex_lock(&rmutex);
     int fd;
-    if ((fd = open("./proxy.log",O_CREAT|O_WRONLY|O_APPEND, 0644))<0) error("logsfile error");
+    if ((fd = open("./proxy.log", O_CREAT|O_WRONLY|O_APPEND, 0644))<0) error("logsfile error");
     write(fd, logs, strlen(logs));
-    pthread_mutex_unlock(&lmutex);
+    close(fd);
+    pthread_mutex_unlock(&rmutex);
 
-    // free(new_req_message);
-    close(*(int*)newsockfd);
     free(logs);
 
+    close(socket_fd);
     free_request_msg(&saved);
-    free(req_message);
-    free(respon_message);
+    return NULL;
 }
 
