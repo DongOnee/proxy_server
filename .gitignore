@@ -1,6 +1,8 @@
 a.out
 proxy
 .vscode
+test*
+proxy.log
 *.o
 
 ## Ignore Visual Studio temporary files, build results, and
