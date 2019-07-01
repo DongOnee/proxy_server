@@ -30,6 +30,11 @@ cd src/
 ![1](https://user-images.githubusercontent.com/26381225/60413536-40146900-9c10-11e9-8def-350681df91e6.png)
 ![2](https://user-images.githubusercontent.com/26381225/60413538-40146900-9c10-11e9-89e1-d078a5911bc0.png)
 
+### Reload
+![3](https://user-images.githubusercontent.com/26381225/60413687-b7e29380-9c10-11e9-8f37-58730d8ae2a4.png)
+![4](https://user-images.githubusercontent.com/26381225/60413688-b7e29380-9c10-11e9-9a12-c993b076a364.png)
+
+
 ## Author
 
 👤 **Kang Dongwon**
