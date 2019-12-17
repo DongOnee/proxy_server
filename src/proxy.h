@@ -17,39 +17,46 @@
 #include <signal.h>
 #include <pthread.h>
 
+#include <sys/time.h>
+#include <sys/select.h>
+
 #include "DLinkedList.h"
 
 struct sigaction act_new;
 struct sigaction act_old;
 
-int proxy_socket_fd; // descriptors rturn from socket and accept system calls
-int proxy_port; // port number
 struct sockaddr_in proxy_addr;
+int proxy_socket; // descriptors rturn from socket and accept system calls
+int proxy_port; // port number
 
 struct request_msg
 {
-    char *_method;
-    char *_url;
-    char *_url_object;
-    char *_port;
-    char *_vhttp;
-    char *_host;
+    char _method[MAX_BUF_SIZE];
+    char _url[MAX_BUF_SIZE];
+    char _url_object[MAX_BUF_SIZE];
+    char _port[MAX_BUF_SIZE];
+    char _vhttp[MAX_BUF_SIZE];
+    char _host[MAX_BUF_SIZE];
 };
 
 void parse_reqm(char*, struct request_msg*);
-void* accept_operation(void*);
-void assign_request_msg(struct request_msg*);
-void free_request_msg(struct request_msg*);
+void *accept_operation(void*);
+void *func_th(void*);
+
+// void assign_request_msg(struct request_msg*);
+// void free_request_msg(struct request_msg*);
 
 void closeall();
 
-DLinkedList* data_cache;
+DLinkedList data_cache;
 pthread_cond_t cond_t = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t mutex_t = PTHREAD_MUTEX_INITIALIZER;
 
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t fmutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t smutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t lmutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t rmutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t kmutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mmutex = PTHREAD_MUTEX_INITIALIZER;
 
 #endif // PROXY_H

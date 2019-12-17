@@ -1,18 +1,5 @@
 #include "DLinkedList.h"
 
-/*
- * return dl's first Node
- */
-DLinkedList* linkedList_init()
-{
-    DLinkedList* dlinkedlist_ptr = (DLinkedList*) malloc(sizeof(DLinkedList));
-    dlinkedlist_ptr->remainder_size = MAX_CACHE_SIZE;
-    dlinkedlist_ptr->header = NULL;
-    dlinkedlist_ptr->tail = NULL;
-
-    return dlinkedlist_ptr;
-}
-
 /**
  * params
  * dlinkedlist_ptr : linked list pointer

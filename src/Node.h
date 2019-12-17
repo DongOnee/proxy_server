@@ -6,6 +6,7 @@
 #include <string.h>
 
 #define MAX_BUF_SIZE 1024 // 1kb
+#define MAX_REQ_MSG 8192
 #define MAX_OBJECT_SIZE 524288 //512kb
 
 typedef struct Node {
